@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  nginx-bal:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx-bal.conf:/etc/nginx/nginx.conf
+    networks:
+      - nginx-app
+
+  nginx1:
+    image: nginx:latest
+    volumes:
+      - ./nginx1.conf:/etc/nginx/nginx.conf
+#    ports:
+ #     - "8081:80"
+    networks:
+      - nginx-app
+
+  nginx2:
+    image: nginx:latest
+    volumes:
+      - ./nginx2.conf:/etc/nginx/nginx.conf
+    ports:
+      - "8082:80"
+    networks:
+      - nginx-app
+
+  nginx3:
+    image: nginx:latest
+    volumes:
+      - ./nginx3.conf:/etc/nginx/nginx.conf
+    ports:
+      - "8083:80"
+    networks:
+      - nginx-app
+
+  apache-server:
+    build: .
+    networks:
+      - nginx-app
+
+
+networks:
+  nginx-app:
+    driver: bridge
