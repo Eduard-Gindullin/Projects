@@ -23,8 +23,10 @@ try {
         exit 1
     }
 
-    # Import BitLocker module
+    # Import BitLocker module and suppress verb warnings
+    $WarningPreference = 'SilentlyContinue'
     Import-Module BitLocker -ErrorAction Stop
+    $WarningPreference = 'Continue'
 
     # Get all BitLocker volumes
     $BitLockerVolumes = Get-BitLockerVolume -ErrorAction Stop

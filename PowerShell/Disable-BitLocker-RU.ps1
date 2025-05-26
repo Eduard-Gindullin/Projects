@@ -23,8 +23,10 @@ try {
         exit 1
     }
 
-    # Импорт модуля BitLocker
+    # Импорт модуля BitLocker с подавлением предупреждений
+    $WarningPreference = 'SilentlyContinue'
     Import-Module BitLocker -ErrorAction Stop
+    $WarningPreference = 'Continue'
 
     # Получение всех томов BitLocker
     $BitLockerVolumes = Get-BitLockerVolume -ErrorAction Stop
