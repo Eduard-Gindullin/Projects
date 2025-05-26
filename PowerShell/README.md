@@ -1,135 +1,141 @@
-# BitLocker Disable Tool / Outil de désactivation BitLocker / Инструмент отключения BitLocker
+# BitLocker Management Scripts
 
-[English](#english) | [Français](#français) | [Русский](#русский)
+[English](#english) | [Русский](#русский) | [Français](#français)
 
 ## English
 
 ### Description
-A set of scripts to automatically disable BitLocker encryption through Group Policy (GPO).
+A set of scripts for managing BitLocker encryption in enterprise environments:
+1. PowerShell script for disabling BitLocker encryption on all drives
+2. Batch script for importing BitLocker Group Policy settings
+
+### Components
+
+#### Disable-BitLocker.ps1
+- Automatically disables BitLocker on all encrypted drives
+- Supports multiple languages (English, Russian, French)
+- Creates detailed logs in CSV format
+- Monitors decryption progress
+- Safe for concurrent execution from multiple computers
+- Automatically creates scheduled task for monitoring if needed
+- Updates final status to COMPLETED when all volumes are decrypted
+
+##### Usage
+```powershell
+# Run with system language
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1
+
+# Specify language (en-US, ru-RU, fr-FR)
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1 -Culture fr-FR
+```
+
+##### Log Location
+Logs are stored in: `\\SP63210003\Dist\Bitlocker\BitlockerLog\BitLocker_Status.csv`
+
+#### Import-BitLockerGPO.bat
+- Imports BitLocker-related Group Policy settings
+- Configures default encryption settings
+- Sets up backup policies for recovery keys
+
+##### Usage
+```batch
+Import-BitLockerGPO.bat
+```
 
 ### Requirements
-- Windows 10/11 Pro or Enterprise
-- Remote Server Administration Tools (RSAT)
-- Administrator rights
-
-### Installation
-1. Download all files to a local directory
-2. Run PowerShell as Administrator
-3. Navigate to the script directory
-
-### Usage
-```powershell
-# Using system language
-.\Disable-BitLocker.ps1
-
-# Specify language explicitly
-.\Disable-BitLocker.ps1 -Culture en-US  # English
-.\Disable-BitLocker.ps1 -Culture fr-FR  # French
-.\Disable-BitLocker.ps1 -Culture ru-RU  # Russian
-
-# Import GPO (uses system language by default)
-.\Import-BitLockerGPO.bat
-
-# Import GPO with specific language
-.\Import-BitLockerGPO.bat en-US  # English
-.\Import-BitLockerGPO.bat fr-FR  # French
-.\Import-BitLockerGPO.bat ru-RU  # Russian
-```
-
-### Monitoring
-- The script creates a scheduled task that monitors decryption progress
-- Task runs every 10 minutes
-- Automatically removes itself when decryption is complete
-
-### Logs
-- `BitLocker_Status.csv` - Decryption progress
-- `BitLocker_Disable.log` - Operation log
-- `GPO_Import.log` - Policy creation log
-
-## Français
-
-### Description
-Un ensemble de scripts pour désactiver automatiquement le chiffrement BitLocker via la Stratégie de Groupe (GPO).
-
-### Prérequis
-- Windows 10/11 Pro ou Enterprise
-- Outils d'administration de serveur distant (RSAT)
-- Droits d'administrateur
-
-### Installation
-1. Téléchargez tous les fichiers dans un répertoire local
-2. Exécutez PowerShell en tant qu'administrateur
-3. Naviguez vers le répertoire des scripts
-
-### Utilisation
-```powershell
-# Utilisation de la langue système
-.\Disable-BitLocker.ps1
-
-# Spécifier la langue explicitement
-.\Disable-BitLocker.ps1 -Culture en-US  # Anglais
-.\Disable-BitLocker.ps1 -Culture fr-FR  # Français
-.\Disable-BitLocker.ps1 -Culture ru-RU  # Russe
-
-# Importer GPO (utilise la langue système par défaut)
-.\Import-BitLockerGPO.bat
-
-# Importer GPO avec une langue spécifique
-.\Import-BitLockerGPO.bat en-US  # Anglais
-.\Import-BitLockerGPO.bat fr-FR  # Français
-.\Import-BitLockerGPO.bat ru-RU  # Russe
-```
-
-### Surveillance
-- Le script crée une tâche planifiée qui surveille la progression du déchiffrement
-- La tâche s'exécute toutes les 10 minutes
-- Se supprime automatiquement une fois le déchiffrement terminé
-
-### Journaux
-- `BitLocker_Status.csv` - Progression du déchiffrement
-- `BitLocker_Disable.log` - Journal des opérations
-- `GPO_Import.log` - Journal de création de stratégie
+- Windows 10/11 or Windows Server 2016+
+- PowerShell 5.1 or higher
+- Administrative privileges
+- Network access to shared folder (\\SP63210003\Dist\Bitlocker)
 
 ## Русский
 
 ### Описание
-Набор скриптов для автоматического отключения шифрования BitLocker через групповые политики (GPO).
+Набор скриптов для управления шифрованием BitLocker в корпоративной среде:
+1. PowerShell скрипт для отключения шифрования BitLocker на всех дисках
+2. Пакетный файл для импорта настроек групповой политики BitLocker
 
-### Требования
-- Windows 10/11 Pro или Enterprise
-- Remote Server Administration Tools (RSAT)
-- Права администратора
+### Компоненты
 
-### Установка
-1. Скачайте все файлы в локальную директорию
-2. Запустите PowerShell от имени администратора
-3. Перейдите в директорию со скриптами
+#### Disable-BitLocker.ps1
+- Автоматически отключает BitLocker на всех зашифрованных дисках
+- Поддерживает несколько языков (английский, русский, французский)
+- Создает подробные логи в формате CSV
+- Отслеживает прогресс расшифровки
+- Безопасное выполнение с нескольких компьютеров одновременно
+- Автоматически создает задачу мониторинга при необходимости
+- Обновляет финальный статус на COMPLETED после расшифровки всех томов
 
-### Использование
+##### Использование
 ```powershell
-# Использование языка системы
-.\Disable-BitLocker.ps1
+# Запуск с системным языком
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1
 
-# Явное указание языка
-.\Disable-BitLocker.ps1 -Culture en-US  # Английский
-.\Disable-BitLocker.ps1 -Culture fr-FR  # Французский
-.\Disable-BitLocker.ps1 -Culture ru-RU  # Русский
-
-# Импорт GPO (по умолчанию использует язык системы)
-.\Import-BitLockerGPO.bat
-
-# Импорт GPO с указанием языка
-.\Import-BitLockerGPO.bat en-US  # Английский
-.\Import-BitLockerGPO.bat fr-FR  # Французский
-.\Import-BitLockerGPO.bat ru-RU  # Русский
+# Указание языка (en-US, ru-RU, fr-FR)
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1 -Culture ru-RU
 ```
 
-### Мониторинг
-- Скрипт создает задачу в планировщике для отслеживания прогресса расшифровки
-- Задача выполняется каждые 10 минут
-- Автоматически удаляется после завершения расшифровки
+##### Расположение логов
+Логи сохраняются в: `\\SP63210003\Dist\Bitlocker\BitlockerLog\BitLocker_Status.csv`
 
-### Логи
-- `BitLocker_Status.csv` - Прогресс расшифровки
-- `BitLocker_Disable.log` - Журнал операций
-- `GPO_Import.log` - Журнал создания политики 
+#### Import-BitLockerGPO.bat
+- Импортирует настройки групповой политики BitLocker
+- Настраивает параметры шифрования по умолчанию
+- Устанавливает политики резервного копирования ключей восстановления
+
+##### Использование
+```batch
+Import-BitLockerGPO.bat
+```
+
+### Требования
+- Windows 10/11 или Windows Server 2016+
+- PowerShell 5.1 или выше
+- Права администратора
+- Доступ к сетевой папке (\\SP63210003\Dist\Bitlocker)
+
+## Français
+
+### Description
+Ensemble de scripts pour la gestion du chiffrement BitLocker dans un environnement d'entreprise :
+1. Script PowerShell pour désactiver le chiffrement BitLocker sur tous les lecteurs
+2. Script batch pour importer les paramètres de stratégie de groupe BitLocker
+
+### Composants
+
+#### Disable-BitLocker.ps1
+- Désactive automatiquement BitLocker sur tous les lecteurs chiffrés
+- Prend en charge plusieurs langues (anglais, russe, français)
+- Crée des journaux détaillés au format CSV
+- Surveille la progression du déchiffrement
+- Exécution sécurisée depuis plusieurs ordinateurs simultanément
+- Crée automatiquement une tâche de surveillance si nécessaire
+- Met à jour le statut final à COMPLETED une fois tous les volumes déchiffrés
+
+##### Utilisation
+```powershell
+# Exécuter avec la langue système
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1
+
+# Spécifier la langue (en-US, ru-RU, fr-FR)
+powershell -ExecutionPolicy Bypass -File Disable-BitLocker.ps1 -Culture fr-FR
+```
+
+##### Emplacement des journaux
+Les journaux sont stockés dans : `\\SP63210003\Dist\Bitlocker\BitlockerLog\BitLocker_Status.csv`
+
+#### Import-BitLockerGPO.bat
+- Importe les paramètres de stratégie de groupe BitLocker
+- Configure les paramètres de chiffrement par défaut
+- Configure les politiques de sauvegarde des clés de récupération
+
+##### Utilisation
+```batch
+Import-BitLockerGPO.bat
+```
+
+### Prérequis
+- Windows 10/11 ou Windows Server 2016+
+- PowerShell 5.1 ou supérieur
+- Privilèges administratifs
+- Accès au dossier partagé (\\SP63210003\Dist\Bitlocker) 
