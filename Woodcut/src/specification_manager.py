@@ -16,6 +16,7 @@ class WoodElement:
     length: float
     width: float
     quantity: int
+    height: float = 0.0
     is_rectangular: bool = True
     notes: str = ""
     custom_shape: Optional[dict] = None  # For non-rectangular pieces
@@ -39,7 +40,7 @@ class SpecificationManager:
         """Import specification from Excel file."""
         try:
             df = pd.read_excel(file_path)
-            required_columns = ['id', 'description', 'length', 'width', 'quantity']
+            required_columns = ['id', 'description', 'length', 'width', 'height', 'quantity']
             if not all(col in df.columns for col in required_columns):
                 raise ValueError(f"Missing required columns. Required: {required_columns}")
             
@@ -49,6 +50,7 @@ class SpecificationManager:
                     description=str(row['description']),
                     length=float(row['length']),
                     width=float(row['width']),
+                    height=float(row.get('height', 0)),
                     quantity=int(row['quantity']),
                     is_rectangular=row.get('is_rectangular', True),
                     notes=str(row.get('notes', "")),
@@ -69,6 +71,7 @@ class SpecificationManager:
                         description=row['description'],
                         length=float(row['length']),
                         width=float(row['width']),
+                        height=float(row.get('height', 0)),
                         quantity=int(row['quantity']),
                         is_rectangular=row.get('is_rectangular', 'True').lower() == 'true',
                         notes=row.get('notes', ""),
@@ -87,6 +90,7 @@ class SpecificationManager:
                 'description': element.description,
                 'length': element.length,
                 'width': element.width,
+                'height': getattr(element, 'height', 0.0),
                 'quantity': element.quantity,
                 'is_rectangular': element.is_rectangular,
                 'notes': element.notes,
@@ -123,6 +127,7 @@ class SpecificationManager:
                     'description': e.description,
                     'length': e.length,
                     'width': e.width,
+                    'height': getattr(e, 'height', 0.0),
                     'quantity': e.quantity,
                     'is_rectangular': e.is_rectangular,
                     'notes': e.notes,

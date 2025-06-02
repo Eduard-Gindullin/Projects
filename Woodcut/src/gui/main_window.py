@@ -13,13 +13,15 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 from .specification_dialog import SpecificationDialog
-from specification_manager import SpecificationManager
+from specification_manager import SpecificationManager, WoodElement
 from pdf_parser import PDFParser
 
 class ProjectWizard(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("New Project Wizard")
+        self.pdf_spec_data = None  # Сохраняем результат анализа PDF
+        self.spec_dialog = SpecificationDialog()  # Создаём один раз
         self.setup_pages()
         
     def setup_pages(self):
@@ -42,8 +44,7 @@ class ProjectWizard(QWizard):
         spec_page = QWizardPage()
         spec_page.setTitle("Wood Specification")
         spec_layout = QVBoxLayout()
-        self.spec_dialog = SpecificationDialog()
-        spec_layout.addWidget(self.spec_dialog)
+        spec_layout.addWidget(self.spec_dialog)  # Используем уже созданный экземпляр
         spec_page.setLayout(spec_layout)
         self.addPage(spec_page)
         
@@ -75,8 +76,48 @@ class ProjectWizard(QWizard):
             print("Выбран файл:", file_name)
             parser = PDFParser(file_name)
             spec = parser.extract_specification()
-            for row in spec['specifications']:
-                print(row)
+            print(f"[DEBUG] extract_specification() вернул: {spec}")
+            self.pdf_spec_data = spec['specifications']
+            # Автоматически заполняем таблицу спецификаций
+            self.fill_specification_from_pdf()
+
+    def fill_specification_from_pdf(self):
+        """Заполняет таблицу спецификаций из данных PDF."""
+        if not self.pdf_spec_data:
+            print("[DEBUG] Нет данных PDF для заполнения спецификации")
+            return
+        print(f"[DEBUG] Ключи первой строки: {list(self.pdf_spec_data[0].keys())}")
+        print(f"[DEBUG] Значения первой строки: {self.pdf_spec_data[0]}")
+        self.spec_dialog.spec_manager.elements.clear()
+        used_ids = set()
+        for idx, row in enumerate(self.pdf_spec_data):
+            raw_id = row.get('Поз', '').strip()
+            if not raw_id or raw_id in used_ids:
+                element_id = str(idx+1)
+            else:
+                element_id = raw_id
+                used_ids.add(element_id)
+            # Парсим длину с удалением пробелов
+            raw_length = str(row.get('Длина, мм', '0')).replace(' ', '').replace('\u00A0', '')
+            try:
+                length = float(raw_length)
+            except Exception:
+                length = 0.0
+            element = WoodElement(
+                id=element_id,
+                description=row.get('Наименование', ''),
+                length=length,
+                width=float(row.get('Ширина, мм', 0)),
+                height=float(row.get('Толщина, мм', row.get('Высота, мм', 0))),
+                quantity=int(row.get('Кол-во, шт.', 1)),
+                is_rectangular=True,
+                notes=''
+            )
+            self.spec_dialog.spec_manager.add_element(element)
+        print(f"[DEBUG] Всего элементов после импорта из PDF: {len(self.spec_dialog.spec_manager.elements)}")
+        for el in self.spec_dialog.spec_manager.elements.values():
+            print(f"[DEBUG] {el}")
+        self.spec_dialog.update_table()
 
 class MainWindow(QMainWindow):
     def __init__(self):

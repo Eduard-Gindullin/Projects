@@ -38,9 +38,9 @@ class SpecificationDialog(QDialog):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "ID", "Description", "Length (mm)", "Width (mm)",
+            "Поз.", "Наименование", "Length (mm)", "Width (mm)", "Thickness (mm)",
             "Quantity", "Rectangular", "Notes"
         ])
         layout.addWidget(self.table)
@@ -62,6 +62,12 @@ class SpecificationDialog(QDialog):
         self.width_input.setRange(0, 1000)
         self.width_input.setSuffix(" mm")
         
+        self.height_input = QDoubleSpinBox()
+        self.height_input.setRange(0, 1000)
+        self.height_input.setSuffix(" mm")
+        self.height_input.setPrefix("")
+        self.height_input.setToolTip("Толщина (мм)")
+        
         self.qty_input = QSpinBox()
         self.qty_input.setRange(1, 1000)
         
@@ -75,6 +81,7 @@ class SpecificationDialog(QDialog):
         input_layout.addWidget(self.desc_input)
         input_layout.addWidget(self.length_input)
         input_layout.addWidget(self.width_input)
+        input_layout.addWidget(self.height_input)
         input_layout.addWidget(self.qty_input)
         input_layout.addWidget(self.rect_input)
         input_layout.addWidget(self.notes_input)
@@ -122,6 +129,7 @@ class SpecificationDialog(QDialog):
                 description=self.desc_input.text(),
                 length=self.length_input.value(),
                 width=self.width_input.value(),
+                height=self.height_input.value() if hasattr(self, 'height_input') else 0.0,
                 quantity=self.qty_input.value(),
                 is_rectangular=self.rect_input.isChecked(),
                 notes=self.notes_input.text()
@@ -140,12 +148,14 @@ class SpecificationDialog(QDialog):
         self.desc_input.clear()
         self.length_input.setValue(0)
         self.width_input.setValue(0)
+        self.height_input.setValue(0)
         self.qty_input.setValue(1)
         self.rect_input.setChecked(True)
         self.notes_input.clear()
     
     def update_table(self):
         """Update the table with current specification."""
+        print(f"[DEBUG] update_table: элементов в spec_manager: {len(self.spec_manager.elements)}")
         self.table.setRowCount(0)
         for element in self.spec_manager.elements.values():
             row = self.table.rowCount()
@@ -155,9 +165,10 @@ class SpecificationDialog(QDialog):
             self.table.setItem(row, 1, QTableWidgetItem(element.description))
             self.table.setItem(row, 2, QTableWidgetItem(str(element.length)))
             self.table.setItem(row, 3, QTableWidgetItem(str(element.width)))
-            self.table.setItem(row, 4, QTableWidgetItem(str(element.quantity)))
-            self.table.setItem(row, 5, QTableWidgetItem("Yes" if element.is_rectangular else "No"))
-            self.table.setItem(row, 6, QTableWidgetItem(element.notes))
+            self.table.setItem(row, 4, QTableWidgetItem(str(getattr(element, 'height', 0.0))))
+            self.table.setItem(row, 5, QTableWidgetItem(str(element.quantity)))
+            self.table.setItem(row, 6, QTableWidgetItem("Yes" if element.is_rectangular else "No"))
+            self.table.setItem(row, 7, QTableWidgetItem(element.notes))
     
     def import_excel(self):
         """Import specification from Excel file."""
