@@ -75,8 +75,8 @@ class ProjectWizard(QWizard):
             print("Выбран файл:", file_name)
             parser = PDFParser(file_name)
             spec = parser.extract_specification()
-            for i, page_text in enumerate(spec['pages']):
-                print(f"\n--- Страница {i+1} ---\n{page_text}\n")
+            for row in spec['specifications']:
+                print(row)
 
 class MainWindow(QMainWindow):
     def __init__(self):
