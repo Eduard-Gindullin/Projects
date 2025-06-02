@@ -1,0 +1,5 @@
+id,description,length,width,quantity,is_rectangular,notes,custom_shape
+W001,Wall beam,4000,100,4,true,Main wall support,
+W002,Floor joist,3000,150,8,true,Floor structure,
+W003,Rafter,2500,75,12,true,Roof structure,
+W004,Custom piece,1200,600,1,false,Special cut required,{"points": [[0,0], [1200,0], [1200,600], [0,600], [0,0]]} 

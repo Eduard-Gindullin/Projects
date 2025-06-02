@@ -1,316 +1,276 @@
-# Get culture parameter and arguments
-param(
-    [string]$Culture = (Get-Culture).Name
-)
+# Script for BitLocker encryption management
+# Скрипт для управления шифрованием BitLocker
 
+# Force UTF-8 encoding for all output
+# Установка кодировки UTF-8 для всего вывода
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
-if ($Culture -notin @("ru-RU", "en-US", "fr-FR")) { 
-    $Culture = "en-US" 
+# Set default encoding for Export-Csv
+# Установка кодировки по умолчанию для Export-Csv
+$PSDefaultParameterValues['Export-Csv:Encoding'] = 'UTF8'
+
+# Check if running with administrative privileges
+# Проверка на наличие административных прав
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "This script requires administrative privileges. Please run as Administrator." -ForegroundColor Red
+    exit 1
 }
 
-# Define log file path
-$LogPath = "\\SP63210003\Dist\Bitlocker\BitlockerLog"
-$LogFile = Join-Path $LogPath "BitLocker_Status.csv"
+# Define log file paths
+# Определение путей к файлам журнала
+$NetworkLogPath = "\\SP63210003\Dist\Bitlocker\BitlockerLog"
+$NetworkLogFile = Join-Path $NetworkLogPath "BitLocker_Status.csv"
 
-# Create log directory if it doesn't exist
-if (-not (Test-Path $LogPath)) {
-    New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
-}
-
-# Create log file if it doesn't exist
-if (-not (Test-Path $LogFile)) {
-    "Timestamp,ComputerName,DriveLetter,Status,EncryptionPercentage" | Out-File -FilePath $LogFile -Encoding UTF8
-}
-
-# Messages dictionary
-$RuMessages = @"
-{
-    'DECRYPTING': 'РАСШИФРОВКА',
-    'ENCRYPTED': 'ЗАШИФРОВАН',
-    'DECRYPTED': 'РАСШИФРОВАН',
-    'ERROR': 'ОШИБКА',
-    'STARTING_DISABLE': 'НАЧАЛО_ОТКЛЮЧЕНИЯ',
-    'ALREADY_DISABLED': 'УЖЕ_ОТКЛЮЧЕН',
-    'DECRYPTION_STARTED': 'РАСШИФРОВКА_ЗАПУЩЕНА_ПРОДОЛЖЕНИЕ_В_ФОНЕ',
-    'MONITORING_TASK_CREATED': 'СОЗДАНА_ЗАДАЧА_МОНИТОРИНГА',
-    'MONITORING_COMPLETED': 'МОНИТОРИНГ_ЗАВЕРШЕН_ЗАДАЧА_УДАЛЕНА',
-    'STATUS_CHECK_ERROR': 'ОШИБКА_ПРОВЕРКИ_СТАТУСА',
-    'TASK_REMOVAL_ERROR': 'ОШИБКА_УДАЛЕНИЯ_ЗАДАЧИ',
-    'CRITICAL_ERROR': 'КРИТИЧЕСКАЯ_ОШИБКА',
-    'MONITORING': 'МОНИТОРИНГ'
-}
-"@ | ConvertFrom-Json
-
-$EnMessages = @"
-{
-    'DECRYPTING': 'DECRYPTING',
-    'ENCRYPTED': 'ENCRYPTED',
-    'DECRYPTED': 'DECRYPTED',
-    'ERROR': 'ERROR',
-    'STARTING_DISABLE': 'STARTING_DISABLE',
-    'ALREADY_DISABLED': 'ALREADY_DISABLED',
-    'DECRYPTION_STARTED': 'DECRYPTION_STARTED_CONTINUING_IN_BACKGROUND',
-    'MONITORING_TASK_CREATED': 'MONITORING_TASK_CREATED',
-    'MONITORING_COMPLETED': 'MONITORING_COMPLETED_TASK_REMOVED',
-    'STATUS_CHECK_ERROR': 'STATUS_CHECK_ERROR',
-    'TASK_REMOVAL_ERROR': 'TASK_REMOVAL_ERROR',
-    'CRITICAL_ERROR': 'CRITICAL_ERROR',
-    'MONITORING': 'MONITORING'
-}
-"@ | ConvertFrom-Json
-
-$FrMessages = @"
-{
-    'DECRYPTING': 'DECHIFFREMENT',
-    'ENCRYPTED': 'CHIFFRE',
-    'DECRYPTED': 'DECHIFFRE',
-    'ERROR': 'ERREUR',
-    'STARTING_DISABLE': 'DEBUT_DESACTIVATION',
-    'ALREADY_DISABLED': 'DEJA_DESACTIVE',
-    'DECRYPTION_STARTED': 'DECHIFFREMENT_DEMARRE_CONTINUE_EN_ARRIERE_PLAN',
-    'MONITORING_TASK_CREATED': 'TACHE_DE_SURVEILLANCE_CREEE',
-    'MONITORING_COMPLETED': 'SURVEILLANCE_TERMINEE_TACHE_SUPPRIMEE',
-    'STATUS_CHECK_ERROR': 'ERREUR_VERIFICATION_STATUT',
-    'TASK_REMOVAL_ERROR': 'ERREUR_SUPPRESSION_TACHE',
-    'CRITICAL_ERROR': 'ERREUR_CRITIQUE',
-    'MONITORING': 'SURVEILLANCE'
-}
-"@ | ConvertFrom-Json
-
+# Status messages
+# Статусные сообщения
 $Messages = @{
-    'ru-RU' = $RuMessages
-    'en-US' = $EnMessages
-    'fr-FR' = $FrMessages
+    'DECRYPTING' = 'DECRYPTING'
+    'ENCRYPTED' = 'ENCRYPTED'
+    'DECRYPTED' = 'DECRYPTED'
+    'ERROR' = 'ERROR'
+    'STARTING_DISABLE' = 'STARTING_DISABLE'
+    'ALREADY_DISABLED' = 'ALREADY_DISABLED'
+    'COMPLETED' = 'COMPLETED'
 }
 
-function Get-LocalizedMessage {
+# Function to check TPM status
+# Функция проверки статуса TPM
+function Get-TPMStatus {
+    try {
+        $tpm = Get-WmiObject -Class Win32_Tpm -Namespace root\CIMV2\Security\MicrosoftTpm
+        if ($null -eq $tpm) {
+            return "TPM_MISSING"
+        }
+        return "TPM_PRESENT"
+    }
+    catch {
+        return "TPM_MISSING"
+    }
+}
+
+# Function to check last log entry status
+# Функция для проверки статуса последней записи в логе
+function Get-LastLogStatus {
     param (
-        [string]$Key
+        [string]$ComputerName
     )
-    return $Messages[$Culture].$Key
+    
+    try {
+        if (Test-Path $NetworkLogFile) {
+            $lastEntry = Import-Csv -Path $NetworkLogFile -Encoding UTF8 | 
+                        Where-Object { $_.ComputerName -eq $ComputerName } |
+                        Sort-Object { [DateTime]::ParseExact($_.Timestamp, "yyyy-MM-dd HH:mm:ss", $null) } -Descending |
+                        Select-Object -First 1
+            
+            if ($lastEntry) {
+                return $lastEntry.Status
+            }
+        }
+    }
+    catch {
+        Write-Host "Error reading last log status: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    return $null
 }
 
+# Function to write log
+# Функция для записи в журнал
 function Write-Log {
     param (
         [string]$DriveLetter,
         [string]$Status,
-        [string]$EncryptionPercentage = "N/A"
+        [string]$EncryptionPercentage = "N/A",
+        [string]$TPMStatus = "N/A"
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "$timestamp,$env:COMPUTERNAME,$DriveLetter,$Status,$EncryptionPercentage"
+    $computerName = $env:COMPUTERNAME
+    
+    # Check if we already have a COMPLETED status for this computer
+    $lastStatus = Get-LastLogStatus -ComputerName $computerName
+    if ($lastStatus -eq $Messages['COMPLETED'] -and $Status -eq $Messages['COMPLETED']) {
+        Write-Host "Skipping duplicate COMPLETED status for $computerName" -ForegroundColor Yellow
+        return
+    }
     
     # Write to console
-    Write-Host "[$timestamp] $env:COMPUTERNAME - Drive $DriveLetter : $Status ($EncryptionPercentage%)"
+    # Вывод в консоль
+    Write-Host "[$timestamp] $computerName - Drive $DriveLetter : $Status ($EncryptionPercentage%) [TPM: $TPMStatus]"
     
-    # Write to CSV file with file lock handling
+    # Create new entry
+    # Создание новой записи
+    $newEntry = [PSCustomObject]@{
+        Timestamp = $timestamp
+        ComputerName = $computerName
+        DriveLetter = $DriveLetter
+        TPMStatus = $TPMStatus
+        EncryptionPercentage = $EncryptionPercentage
+        Status = $Status
+    }
+    
+    # Update CSV file with file lock handling
+    # Обновление CSV файла с обработкой блокировки
     $mutex = New-Object System.Threading.Mutex($false, "Global\BitLockerLogMutex")
     try {
-        $mutex.WaitOne() | Out-Null
-        $logEntry | Out-File -FilePath $LogFile -Append -Encoding UTF8
+        $mutex.WaitOne(10000) | Out-Null # Wait up to 10 seconds for lock
+        
+        if (Test-Path $NetworkLogFile) {
+            try {
+                # Read all entries except current computer's entry
+                $logContent = @(Import-Csv -Path $NetworkLogFile -Encoding UTF8 | 
+                              Where-Object { $_.ComputerName -ne $computerName })
+                $logContent += $newEntry
+                
+                # Sort entries by timestamp (newest first) and save
+                $logContent | Sort-Object { [DateTime]::ParseExact($_.Timestamp, "yyyy-MM-dd HH:mm:ss", $null) } -Descending |
+                    Export-Csv -Path $NetworkLogFile -NoTypeInformation -Encoding UTF8 -Force
+            }
+            catch {
+                Write-Host "Error updating log file: $($_.Exception.Message)" -ForegroundColor Red
+                throw
+            }
+        } else {
+            # Create new log file with header and first entry
+            $newEntry | Export-Csv -Path $NetworkLogFile -NoTypeInformation -Encoding UTF8 -Force
+        }
     }
     finally {
-        $mutex.ReleaseMutex()
+        if ($mutex) {
+            $mutex.ReleaseMutex()
+        }
     }
 }
 
-function Test-MonitoringRequired {
-    param (
-        [string]$ComputerName
-    )
-    
+# Function to check if all volumes are decrypted
+# Функция для проверки, все ли тома расшифрованы
+function Test-AllVolumesDecrypted {
     try {
-        $content = Get-Content -Path $LogFile | ConvertFrom-Csv
-        $computerEntries = $content | Where-Object { $_.ComputerName -eq $ComputerName }
-        
-        if (-not $computerEntries) {
-            return $false
-        }
-        
-        foreach ($entry in $computerEntries) {
-            if ($entry.Status -eq (Get-LocalizedMessage 'DECRYPTING') -or 
-                $entry.Status -eq (Get-LocalizedMessage 'ENCRYPTED')) {
-                return $true
+        $volumes = Get-BitLockerVolume
+        foreach ($volume in $volumes) {
+            Write-Host "Checking volume $($volume.MountPoint):" -ForegroundColor Cyan
+            Write-Host "  Protection Status: $($volume.ProtectionStatus)" -ForegroundColor Cyan
+            Write-Host "  Volume Status: $($volume.VolumeStatus)" -ForegroundColor Cyan
+            Write-Host "  Encryption Percentage: $($volume.EncryptionPercentage)%" -ForegroundColor Cyan
+            
+            if ($volume.ProtectionStatus -eq "On" -or 
+                $volume.VolumeStatus -eq "EncryptionInProgress" -or 
+                $volume.VolumeStatus -eq "DecryptionInProgress" -or
+                ($volume.ProtectionStatus -eq "Off" -and $volume.EncryptionPercentage -gt 0)) {
+                return $false
             }
         }
-        
-        return $false
-    }
-    catch {
-        $errorMessage = "{0}: $($_.Exception.Message)" -f (Get-LocalizedMessage 'STATUS_CHECK_ERROR')
-        Write-Log -DriveLetter "N/A" -Status $errorMessage
         return $true
     }
-}
-
-function Remove-MonitoringTask {
-    param (
-        [string]$ComputerName
-    )
-    
-    try {
-        $taskName = "BitLocker Monitoring"
-        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        
-        if ($task) {
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-            Write-Log -DriveLetter "N/A" -Status (Get-LocalizedMessage 'MONITORING_COMPLETED')
-        }
-    }
     catch {
-        $errorMessage = "{0}: $($_.Exception.Message)" -f (Get-LocalizedMessage 'TASK_REMOVAL_ERROR')
-        Write-Log -DriveLetter "N/A" -Status $errorMessage
-    }
-}
-
-function Update-VolumeStatus {
-    param (
-        [string]$DriveLetter,
-        [string]$ComputerName
-    )
-    
-    try {
-        $volume = Get-BitLockerVolume -MountPoint $DriveLetter -ErrorAction Stop
-        $encryptionPercentage = $volume.EncryptionPercentage
-        
-        if ($volume.VolumeStatus -eq "FullyDecrypted") {
-            Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'DECRYPTED') -EncryptionPercentage "0"
-            return $true
-        }
-        elseif ($volume.VolumeStatus -eq "DecryptionInProgress") {
-            Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'DECRYPTING') -EncryptionPercentage $encryptionPercentage
-            return $false
-        }
-        else {
-            Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'MONITORING') -EncryptionPercentage $encryptionPercentage
-            return $false
-        }
-    }
-    catch {
-        Write-Log -DriveLetter $DriveLetter -Status ((Get-LocalizedMessage 'ERROR') + ": $($_.Exception.Message)") -EncryptionPercentage "N/A"
+        Write-Host "Error in Test-AllVolumesDecrypted: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
 
-function Update-LogStatus {
-    param (
-        [string]$ComputerName,
-        [string]$Status
-    )
-    
-    $mutex = New-Object System.Threading.Mutex($false, "Global\BitLockerLogMutex")
-    try {
-        $mutex.WaitOne() | Out-Null
-        
-        # Read existing log content
-        $logContent = Import-Csv -Path $LogFile
-        
-        # Create temporary file
-        $tempFile = [System.IO.Path]::GetTempFileName()
-        
-        # Process each line
-        $logContent | ForEach-Object {
-            if ($_.ComputerName -eq $ComputerName) {
-                # Update status for matching computer
-                $_ | Add-Member -MemberType NoteProperty -Name "Status" -Value $Status -Force
-            }
-            $_ | Export-Csv -Path $tempFile -NoTypeInformation -Append
-        }
-        
-        # Replace original file with updated content
-        Move-Item -Path $tempFile -Destination $LogFile -Force
-    }
-    finally {
-        $mutex.ReleaseMutex()
-    }
-}
-
+# Main script execution
+# Основное выполнение скрипта
 try {
-    $BitLockerVolumes = Get-BitLockerVolume -ErrorAction Stop
+    # Check BitLocker module availability
+    # Проверка доступности модуля BitLocker
+    if (-not (Get-Command -Name 'Get-BitLockerVolume' -ErrorAction SilentlyContinue)) {
+        Write-Host "BitLocker PowerShell module not available. Please check if BitLocker is installed." -ForegroundColor Red
+        exit 1
+    }
+    
+    # Check if we already have a COMPLETED status
+    $lastStatus = Get-LastLogStatus -ComputerName $env:COMPUTERNAME
+    if ($lastStatus -eq $Messages['COMPLETED']) {
+        Write-Host "BitLocker decryption already completed for this computer. Exiting." -ForegroundColor Green
+        exit 0
+    }
+    
     $ComputerName = $env:COMPUTERNAME
-    $monitoringRequired = $false
-    $allVolumesDecrypted = $true
-
+    $tpmStatus = Get-TPMStatus
+    $logUpdateInterval = New-TimeSpan -Minutes 5
+    $lastLogUpdate = [DateTime]::MinValue
+    
+    # If BitLocker is not enabled and TPM is missing, log it and exit
+    $BitLockerVolumes = Get-BitLockerVolume -ErrorAction Stop
+    $hasEncryptedVolumes = $false
     foreach ($Volume in $BitLockerVolumes) {
-        try {
-            $DriveLetter = $Volume.MountPoint
-
+        if ($Volume.ProtectionStatus -eq "On" -or 
+            $Volume.VolumeStatus -eq "DecryptionInProgress" -or
+            ($Volume.ProtectionStatus -eq "Off" -and $Volume.EncryptionPercentage -gt 0)) {
+            $hasEncryptedVolumes = $true
+            break
+        }
+    }
+    
+    if (-not $hasEncryptedVolumes) {
+        Write-Host "No encrypted volumes found. Logging status and exiting." -ForegroundColor Green
+        Write-Log -DriveLetter "C:" -Status $Messages['ALREADY_DISABLED'] -EncryptionPercentage "0" -TPMStatus $tpmStatus
+        Write-Log -DriveLetter "C:" -Status $Messages['COMPLETED'] -EncryptionPercentage "0" -TPMStatus $tpmStatus
+        exit 0
+    }
+    
+    # Start decryption for all encrypted volumes
+    foreach ($Volume in $BitLockerVolumes) {
+        if ($Volume.ProtectionStatus -eq "On") {
+            Write-Host "Starting decryption for volume $($Volume.MountPoint)..." -ForegroundColor Yellow
+            Write-Log -DriveLetter $Volume.MountPoint -Status $Messages['STARTING_DISABLE'] -TPMStatus $tpmStatus
+            Disable-BitLocker -MountPoint $Volume.MountPoint -ErrorAction Stop
+        }
+    }
+    
+    # Monitor decryption progress
+    Write-Host "Starting decryption monitoring..." -ForegroundColor Cyan
+    while ($true) {
+        $currentTime = Get-Date
+        $shouldUpdateLog = ($currentTime - $lastLogUpdate) -ge $logUpdateInterval
+        $allDecrypted = $true
+        
+        $BitLockerVolumes = Get-BitLockerVolume -ErrorAction Stop
+        foreach ($Volume in $BitLockerVolumes) {
+            $status = ""
+            $encryptionPercentage = $Volume.EncryptionPercentage
+            
             if ($Volume.ProtectionStatus -eq "On") {
-                $allVolumesDecrypted = $false
-                Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'STARTING_DISABLE')
-                
-                Disable-BitLocker -MountPoint $DriveLetter -ErrorAction Stop
-
-                $maxAttempts = 3
-                $sleepSeconds = 10
-                $attempt = 0
-
-                do {
-                    Start-Sleep -Seconds $sleepSeconds
-                    $decryptionComplete = Update-VolumeStatus -DriveLetter $DriveLetter -ComputerName $ComputerName
-                    $attempt++
-                } while (-not $decryptionComplete -and $attempt -lt $maxAttempts)
-
-                if (-not $decryptionComplete) {
-                    Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'DECRYPTION_STARTED')
-                    $monitoringRequired = $true
-                    $allVolumesDecrypted = $false
-                }
+                $status = $Messages['ENCRYPTED']
+                $allDecrypted = $false
             }
-            else {
-                Write-Log -DriveLetter $DriveLetter -Status (Get-LocalizedMessage 'ALREADY_DISABLED') -EncryptionPercentage "0"
+            elseif ($Volume.VolumeStatus -eq "DecryptionInProgress" -or 
+                   ($Volume.ProtectionStatus -eq "Off" -and $encryptionPercentage -gt 0)) {
+                $status = $Messages['DECRYPTING']
+                $allDecrypted = $false
+            }
+            elseif ($Volume.VolumeStatus -eq "FullyDecrypted" -or 
+                   ($Volume.ProtectionStatus -eq "Off" -and $encryptionPercentage -eq 0)) {
+                $status = $Messages['DECRYPTED']
+            }
+            
+            # Update console always
+            Write-Host "[$($currentTime.ToString('yyyy-MM-dd HH:mm:ss'))] Volume $($Volume.MountPoint): $status ($encryptionPercentage%) [TPM: $tpmStatus]" -ForegroundColor Cyan
+            
+            # Update log only at intervals
+            if ($shouldUpdateLog) {
+                Write-Log -DriveLetter $Volume.MountPoint -Status $status -EncryptionPercentage $encryptionPercentage -TPMStatus $tpmStatus
             }
         }
-        catch {
-            $errorMessage = "{0}: $($_.Exception.Message)" -f (Get-LocalizedMessage 'ERROR')
-            Write-Log -DriveLetter $DriveLetter -Status $errorMessage -EncryptionPercentage "N/A"
-            $monitoringRequired = $true
-            $allVolumesDecrypted = $false
+        
+        if ($shouldUpdateLog) {
+            $lastLogUpdate = $currentTime
         }
-    }
-
-    if ($allVolumesDecrypted) {
-        Update-LogStatus -ComputerName $ComputerName -Status "COMPLETED"
-    }
-
-    if ($monitoringRequired) {
-        $taskName = "BitLocker Monitoring"
-        $taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-
-        if (-not $taskExists) {
-            $scriptPath = $MyInvocation.MyCommand.Path
-            $monitoringScript = @"
-Import-Module BitLocker
-`$volumes = Get-BitLockerVolume
-foreach (`$vol in `$volumes) {
-    & '$scriptPath' -Culture '$Culture'
-    Update-VolumeStatus -DriveLetter `$vol.MountPoint -ComputerName '$ComputerName'
-}
-if (-not (Test-MonitoringRequired -ComputerName '$ComputerName')) {
-    Remove-MonitoringTask -ComputerName '$ComputerName'
-}
-"@
-            $bytes = [System.Text.Encoding]::Unicode.GetBytes($monitoringScript)
-            $encodedCommand = [Convert]::ToBase64String($bytes)
-            
-            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
-            $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 10)
-            $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-            
-            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal
-            Write-Log -DriveLetter "N/A" -Status (Get-LocalizedMessage 'MONITORING_TASK_CREATED')
+        
+        # If all volumes are decrypted, write final status and exit
+        if ($allDecrypted) {
+            Write-Host "All volumes have been decrypted!" -ForegroundColor Green
+            Write-Log -DriveLetter "C:" -Status $Messages['COMPLETED'] -EncryptionPercentage "0" -TPMStatus $tpmStatus
+            exit 0
         }
-    }
-    else {
-        $taskExists = Get-ScheduledTask -TaskName "BitLocker Monitoring" -ErrorAction SilentlyContinue
-        if ($taskExists) {
-            Remove-MonitoringTask -ComputerName $ComputerName
-        }
+        
+        # Wait for 30 seconds before next check
+        Start-Sleep -Seconds 30
     }
 }
 catch {
-    $errorMessage = "{0}: $($_.Exception.Message)" -f (Get-LocalizedMessage 'CRITICAL_ERROR')
-    Write-Log -DriveLetter "N/A" -Status $errorMessage -EncryptionPercentage "N/A"
+    Write-Log -DriveLetter "N/A" -Status $Messages['ERROR'] -TPMStatus (Get-TPMStatus)
+    Write-Host "Critical error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 } 
