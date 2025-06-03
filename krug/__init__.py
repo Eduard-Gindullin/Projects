@@ -1,0 +1,1 @@
+from .geometry import Figure, Circle, Triangle 
