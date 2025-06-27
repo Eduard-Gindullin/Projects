@@ -1,4 +1,5 @@
-# Woodcut Project
+# Woodcut Project WIP
+идея вытаскивать из чертежей проекта каркасного дома (любых) информацию о требуемом пиломатериале и герировать карту распила. 
 
 ## Description
 Project for wood cutting optimization and management.
